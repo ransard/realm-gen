@@ -5,13 +5,13 @@ from collections import deque
 from sklearn.cluster import KMeans
 import ollama
 from realm_area import RealmArea
-import matplotlib.pyplot as plt
 from scipy.ndimage import gaussian_filter
 from sklearn.cluster import DBSCAN
 from collections import Counter
 
 from sklearn.preprocessing import StandardScaler
 from scipy.spatial import cKDTree
+from image_handler import ImageHandler
 
 
 class RealmGenerator:
@@ -38,6 +38,8 @@ class RealmGenerator:
             5: (0.5, 0.5, 0.5),  # Hills: Gray
             6: (0.7, 0.7, 0.7),  # Mountains: Light Gray
         }
+
+        self.image_handler = ImageHandler(self.biome_colors)
 
     def generate_areas(self, biome_map, num_areas=5):
         # Flatten the 2D biome map into a list of (x, y, biome) tuples
@@ -103,7 +105,7 @@ class RealmGenerator:
                 area_name, area_description, area_characteristics
             )
 
-        self.save_image_with_areas(biome_map, areas, "areas.png")
+        self.image_handler.save_image_with_areas(biome_map, areas, "areas.png")
         return areas
 
     def refine_clusters(self, X, labels, radius):
@@ -166,7 +168,7 @@ class RealmGenerator:
             #     "main_biome": self.biome_names[most_common_biome],
             # }
 
-        self.save_image_with_areas(biome_map, areas, "areas.png")
+        self.image_handler.save_image_with_areas(biome_map, areas, "areas.png")
         return areas
 
     def generate_area_info(self, main_biome):
@@ -233,7 +235,7 @@ class RealmGenerator:
                     base=random.randint(0, 1000),
                 )
 
-        self.save_image(heightmap, "heightmap.png", cmap="terrain")
+        self.image_handler.save_image(heightmap, "heightmap.png", cmap="terrain")
         return heightmap
 
     def generate_improved_heightmap(
@@ -280,7 +282,7 @@ class RealmGenerator:
             enhanced_heightmap.max() - enhanced_heightmap.min()
         )
 
-        self.save_image(final_heightmap, "heightmap.png", cmap="terrain")
+        self.image_handler.save_image(final_heightmap, "heightmap.png", cmap="terrain")
         return final_heightmap
 
     def apply_biomes(self, heightmap):
@@ -303,7 +305,9 @@ class RealmGenerator:
                 else:
                     biome_map[i][j] = self.biomes["MOUNTAINS"]
 
-        self.save_image(biome_map, "biome_map.png", custom_cmap=self.biome_colors)
+        self.image_handler.save_image(
+            biome_map, "biome_map.png", custom_cmap=self.biome_colors
+        )
         return biome_map
 
     def generate_rivers(self, heightmap, num_rivers=5, max_length=1000, min_length=10):
@@ -352,7 +356,7 @@ class RealmGenerator:
                 for rx, ry in river:
                     rivers[rx, ry] = True
 
-        self.save_image(rivers, "rivers.png", cmap="Blues")
+        self.image_handler.save_image(rivers, "rivers.png", cmap="Blues")
         return rivers
 
     def find_river_source(self, heightmap, attempts=100, elevation_threshold=0.6):
@@ -391,7 +395,9 @@ class RealmGenerator:
                     break
                 attempts += 1
 
-        self.save_image_with_points(biome_map, villages, "villages.png", "Villages")
+        self.image_handler.save_image_with_points(
+            biome_map, villages, "villages.png", "Villages"
+        )
         return villages
 
     def is_near_water(self, x, y, rivers, distance=5):
@@ -426,67 +432,13 @@ class RealmGenerator:
             ):
                 poi.append((x, y, poi_type))
 
-        self.save_image_with_points(
+        self.image_handler.save_image_with_points(
             biome_map,
             [(x, y) for x, y, _ in poi],
             "points_of_interest.png",
             "Points of Interest",
         )
         return poi
-
-    def save_image(self, data, filename, cmap="viridis", custom_cmap=None):
-        plt.figure(figsize=(10, 10))
-        if custom_cmap:
-            cmap = plt.matplotlib.colors.ListedColormap(list(custom_cmap.values()))
-        plt.imshow(data, cmap=cmap)
-        plt.colorbar()
-        plt.title(filename.split(".")[0].replace("_", " ").title())
-        plt.axis("off")
-        plt.tight_layout()
-        plt.savefig(filename)
-        plt.close()
-
-    def save_image_with_points(self, background, points, filename, title):
-        plt.figure(figsize=(10, 10))
-        plt.imshow(
-            background,
-            cmap=plt.matplotlib.colors.ListedColormap(list(self.biome_colors.values())),
-        )
-        x, y = zip(*points)
-        plt.scatter(y, x, c="red", s=20)
-        plt.title(title)
-        plt.axis("off")
-        plt.tight_layout()
-        plt.savefig(filename)
-        plt.close()
-
-    def save_image_with_areas(self, background, areas, filename):
-        plt.figure(figsize=(10, 10))
-        plt.imshow(
-            background,
-            cmap=plt.matplotlib.colors.ListedColormap(list(self.biome_colors.values())),
-        )
-        for (x1, y1, x2, y2), area_info in areas.items():
-            rect = plt.Rectangle(
-                (y1, x1), y2 - y1, x2 - x1, fill=False, edgecolor="red"
-            )
-
-            print(f"Area: {area_info}")
-
-            plt.gca().add_patch(rect)
-            plt.text(
-                (y1 + y2) / 2,
-                (x1 + x2) / 2,
-                area_info.name,
-                ha="center",
-                va="center",
-                bbox=dict(facecolor="white", alpha=0.7),
-            )
-        plt.title("Realm Areas")
-        plt.axis("off")
-        plt.tight_layout()
-        plt.savefig(filename)
-        plt.close()
 
     def generate_realm(self):
         print("Generating realm...")
