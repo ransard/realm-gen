@@ -5,10 +5,17 @@ from collections import deque
 from sklearn.cluster import KMeans
 import ollama
 from realm_area import RealmArea
+import matplotlib.pyplot as plt
+from scipy.ndimage import gaussian_filter
+from sklearn.cluster import DBSCAN
+from collections import Counter
+
+from sklearn.preprocessing import StandardScaler
+from scipy.spatial import cKDTree
 
 
 class RealmGenerator:
-    def __init__(self, width, height, model_name: str = "qwen2.5:14b"):
+    def __init__(self, width, height, model_name: str = "llama3.1"):
         self.width = width
         self.height = height
         self.model_name = model_name
@@ -22,8 +29,96 @@ class RealmGenerator:
             "MOUNTAINS": 6,
         }
         self.biome_names = {v: k for k, v in self.biomes.items()}
+        self.biome_colors = {
+            0: (0, 0, 0.5),  # Deep Water: Dark Blue
+            1: (0, 0, 1),  # Shallow Water: Blue
+            2: (1, 1, 0.7),  # Beach: Pale Yellow
+            3: (0.5, 0.8, 0.5),  # Plains: Light Green
+            4: (0, 0.5, 0),  # Forest: Dark Green
+            5: (0.5, 0.5, 0.5),  # Hills: Gray
+            6: (0.7, 0.7, 0.7),  # Mountains: Light Gray
+        }
 
     def generate_areas(self, biome_map, num_areas=5):
+        # Flatten the 2D biome map into a list of (x, y, biome) tuples
+        points = [
+            (x, y, biome)
+            for x in range(self.width)
+            for y in range(self.height)
+            for biome in [biome_map[x][y]]
+        ]
+
+        # Convert points to a numpy array for clustering
+        X = np.array([(p[0], p[1], p[2]) for p in points])
+
+        # Normalize the features
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+
+        # Adjust the weight of the biome feature
+        biome_weight = (
+            2.0  # Adjust this value to change the importance of biome in clustering
+        )
+        X_scaled[:, 2] *= biome_weight
+
+        # Use KMeans for initial clustering
+        kmeans = KMeans(n_clusters=num_areas, random_state=42)
+        labels = kmeans.fit_predict(X_scaled)
+
+        # Refine clusters based on local density and biome similarity
+        refined_labels = self.refine_clusters(
+            X, labels, radius=max(self.width, self.height) // 20
+        )
+
+        # Create a dictionary to store area information
+        areas = {}
+
+        # Process each cluster
+        unique_labels = set(refined_labels)
+        for label in unique_labels:
+            # Get the points in this cluster
+            cluster_points = [
+                point for point, l in zip(points, refined_labels) if l == label
+            ]
+
+            # Calculate the bounding box for this area
+            x_coords, y_coords, biomes = zip(*cluster_points)
+            x1, y1 = min(x_coords), min(y_coords)
+            x2, y2 = max(x_coords), max(y_coords)
+
+            # Get the most common biome in this area
+            most_common_biome = Counter(biomes).most_common(1)[0][0]
+
+            # Generate area name and description using Ollama
+            area_name, area_description, area_characteristics = self.generate_area_info(
+                self.biome_names[most_common_biome]
+            )
+
+            print(f"Generated area: {area_name}")
+            print(f"Description: {area_description}")
+            print(f"Characteristics: {area_characteristics}")
+
+            # Store area information
+            areas[(x1, y1, x2, y2)] = RealmArea(
+                area_name, area_description, area_characteristics
+            )
+
+        self.save_image_with_areas(biome_map, areas, "areas.png")
+        return areas
+
+    def refine_clusters(self, X, labels, radius):
+        tree = cKDTree(X)
+        refined_labels = np.copy(labels)
+
+        for i, point in enumerate(X):
+            indices = tree.query_ball_point(point, radius)
+            neighbor_labels = labels[indices]
+            most_common = Counter(neighbor_labels).most_common(1)[0][0]
+            refined_labels[i] = most_common
+
+        return refined_labels
+
+    def generate_areas_old(self, biome_map, num_areas=5):
         # Flatten the 2D biome map into a list of (x, y, biome) tuples
         points = [
             (x, y, biome)
@@ -71,27 +166,38 @@ class RealmGenerator:
             #     "main_biome": self.biome_names[most_common_biome],
             # }
 
+        self.save_image_with_areas(biome_map, areas, "areas.png")
         return areas
 
     def generate_area_info(self, main_biome):
+        print(f"Generating area info for {main_biome}...")
         prompt = f"""
         Generate a short, evocative name and a brief description for an area in a fantasy realm.
         The area is primarily composed of {main_biome.lower().replace('_', ' ')}.
+
+        The characteristics should be a list of 2-5 key features like atmosphere, wildlife etc.
+        The description should be 1-2 sentences and explain the uniqueness of the area. 
+        The name should be 2-4 words long and should contain the essence of the area. 
         
         Format the response as follows:
-        Name: [Area Name]
-        Description: [Area Description]
         Characteristics: [Area Characteristic]
-
-        The name should be 2-4 words long. The description should be 1-2 sentences. The characteristics should be a list of 2-5 key features like atmosphere, wildlife etc.
+        Description: [Area Description]
+        Name: [Area Name]
         """
 
         try:
-            response = ollama.generate(model=self.model_name, prompt=prompt)
+            response = ollama.generate(
+                model=self.model_name,
+                prompt=prompt,
+                # options={"temperature": 20.5, "seed": 115},
+            )
             lines = response["response"].strip().split("\n")
+
+            print(lines)
+
             name = (
-                lines[0].split(": ", 1)[1]
-                if lines[0].startswith("Name:")
+                lines[2].split(": ", 1)[1]
+                if lines[2].startswith("Name:")
                 else "Unnamed Area"
             )
             description = (
@@ -100,8 +206,8 @@ class RealmGenerator:
                 else "A mysterious area awaits exploration."
             )
             characteristics = (
-                lines[2].split(": ", 1)[1].split(", ")
-                if len(lines) > 2 and lines[2].startswith("Characteristics:")
+                lines[0].split(": ", 1)[1].split(", ")
+                if lines[0].startswith("Characteristics:")
                 else "N/A"
             )
 
@@ -126,7 +232,56 @@ class RealmGenerator:
                     repeaty=self.height,
                     base=random.randint(0, 1000),
                 )
+
+        self.save_image(heightmap, "heightmap.png", cmap="terrain")
         return heightmap
+
+    def generate_improved_heightmap(
+        self,
+        scale=100.0,
+        octaves=6,
+        persistence=0.5,
+        lacunarity=2.0,
+        seed=None,
+    ):
+        if seed is not None:
+            np.random.seed(seed)
+
+        width = self.width
+        height = self.height
+
+        heightmap = np.zeros((width, height))
+
+        # Generate base noise
+        for i in range(width):
+            for j in range(height):
+                heightmap[i][j] = noise.pnoise2(
+                    i / scale,
+                    j / scale,
+                    octaves=octaves,
+                    persistence=persistence,
+                    lacunarity=lacunarity,
+                    repeatx=width,
+                    repeaty=height,
+                    base=np.random.randint(0, 1000),
+                )
+
+        # Normalize the heightmap
+        heightmap = (heightmap - heightmap.min()) / (heightmap.max() - heightmap.min())
+
+        # Apply Gaussian smoothing
+        smoothed_heightmap = gaussian_filter(heightmap, sigma=2)
+
+        # Enhance contrast
+        enhanced_heightmap = np.power(smoothed_heightmap, 1.5)
+
+        # Renormalize
+        final_heightmap = (enhanced_heightmap - enhanced_heightmap.min()) / (
+            enhanced_heightmap.max() - enhanced_heightmap.min()
+        )
+
+        self.save_image(final_heightmap, "heightmap.png", cmap="terrain")
+        return final_heightmap
 
     def apply_biomes(self, heightmap):
         biome_map = np.zeros((self.width, self.height), dtype=int)
@@ -147,6 +302,8 @@ class RealmGenerator:
                     biome_map[i][j] = self.biomes["HILLS"]
                 else:
                     biome_map[i][j] = self.biomes["MOUNTAINS"]
+
+        self.save_image(biome_map, "biome_map.png", custom_cmap=self.biome_colors)
         return biome_map
 
     def generate_rivers(self, heightmap, num_rivers=5, max_length=1000, min_length=10):
@@ -195,6 +352,7 @@ class RealmGenerator:
                 for rx, ry in river:
                     rivers[rx, ry] = True
 
+        self.save_image(rivers, "rivers.png", cmap="Blues")
         return rivers
 
     def find_river_source(self, heightmap, attempts=100, elevation_threshold=0.6):
@@ -232,6 +390,8 @@ class RealmGenerator:
                     villages.append((x, y))
                     break
                 attempts += 1
+
+        self.save_image_with_points(biome_map, villages, "villages.png", "Villages")
         return villages
 
     def is_near_water(self, x, y, rivers, distance=5):
@@ -265,11 +425,72 @@ class RealmGenerator:
                 and biome_map[x][y] != self.biomes["DEEP_WATER"]
             ):
                 poi.append((x, y, poi_type))
+
+        self.save_image_with_points(
+            biome_map,
+            [(x, y) for x, y, _ in poi],
+            "points_of_interest.png",
+            "Points of Interest",
+        )
         return poi
+
+    def save_image(self, data, filename, cmap="viridis", custom_cmap=None):
+        plt.figure(figsize=(10, 10))
+        if custom_cmap:
+            cmap = plt.matplotlib.colors.ListedColormap(list(custom_cmap.values()))
+        plt.imshow(data, cmap=cmap)
+        plt.colorbar()
+        plt.title(filename.split(".")[0].replace("_", " ").title())
+        plt.axis("off")
+        plt.tight_layout()
+        plt.savefig(filename)
+        plt.close()
+
+    def save_image_with_points(self, background, points, filename, title):
+        plt.figure(figsize=(10, 10))
+        plt.imshow(
+            background,
+            cmap=plt.matplotlib.colors.ListedColormap(list(self.biome_colors.values())),
+        )
+        x, y = zip(*points)
+        plt.scatter(y, x, c="red", s=20)
+        plt.title(title)
+        plt.axis("off")
+        plt.tight_layout()
+        plt.savefig(filename)
+        plt.close()
+
+    def save_image_with_areas(self, background, areas, filename):
+        plt.figure(figsize=(10, 10))
+        plt.imshow(
+            background,
+            cmap=plt.matplotlib.colors.ListedColormap(list(self.biome_colors.values())),
+        )
+        for (x1, y1, x2, y2), area_info in areas.items():
+            rect = plt.Rectangle(
+                (y1, x1), y2 - y1, x2 - x1, fill=False, edgecolor="red"
+            )
+
+            print(f"Area: {area_info}")
+
+            plt.gca().add_patch(rect)
+            plt.text(
+                (y1 + y2) / 2,
+                (x1 + x2) / 2,
+                area_info.name,
+                ha="center",
+                va="center",
+                bbox=dict(facecolor="white", alpha=0.7),
+            )
+        plt.title("Realm Areas")
+        plt.axis("off")
+        plt.tight_layout()
+        plt.savefig(filename)
+        plt.close()
 
     def generate_realm(self):
         print("Generating realm...")
-        heightmap = self.generate_heightmap()
+        heightmap = self.generate_improved_heightmap(seed=42)
         print("Generated heightmap")
         biome_map = self.apply_biomes(heightmap)
         print("Applied biomes")
