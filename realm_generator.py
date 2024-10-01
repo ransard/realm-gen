@@ -120,57 +120,6 @@ class RealmGenerator:
 
         return refined_labels
 
-    def generate_areas_old(self, biome_map, num_areas=5):
-        # Flatten the 2D biome map into a list of (x, y, biome) tuples
-        points = [
-            (x, y, biome)
-            for x in range(self.width)
-            for y in range(self.height)
-            for biome in [biome_map[x][y]]
-        ]
-
-        # Use KMeans clustering to identify distinct areas
-        kmeans = KMeans(n_clusters=num_areas, random_state=42)
-        kmeans.fit(points)
-
-        # Create a dictionary to store area information
-        areas = {}
-        for i in range(num_areas):
-            # Get the points in this cluster
-            cluster_points = [
-                point for point, label in zip(points, kmeans.labels_) if label == i
-            ]
-
-            # Calculate the bounding box for this area
-            x_coords, y_coords, biomes = zip(*cluster_points)
-            x1, y1 = min(x_coords), min(y_coords)
-            x2, y2 = max(x_coords), max(y_coords)
-
-            # Get the most common biome in this area
-            most_common_biome = max(set(biomes), key=biomes.count)
-
-            # Generate area name and description using Ollama
-            area_name, area_description, area_characteristics = self.generate_area_info(
-                self.biome_names[most_common_biome]
-            )
-
-            print(f"Generated area: {area_name})")
-            print(f"Description: {area_description}")
-            print(f"Characteristics: {area_characteristics}")
-
-            # Store area information
-            areas[(x1, y1, x2, y2)] = RealmArea(
-                area_name, area_description, area_characteristics
-            )
-            # {
-            #     "name": area_name,
-            #     "description": area_description,
-            #     "main_biome": self.biome_names[most_common_biome],
-            # }
-
-        self.image_handler.save_image_with_areas(biome_map, areas, "areas.png")
-        return areas
-
     def generate_area_info(self, main_biome):
         print(f"Generating area info for {main_biome}...")
         prompt = f"""
