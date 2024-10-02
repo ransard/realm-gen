@@ -2,7 +2,7 @@ from realm_generator import RealmGenerator
 from room_generator import RoomDescriptionGenerator
 
 # Usage
-generator = RealmGenerator(width=100, height=100)
+generator = RealmGenerator(width=512, height=512)
 realm = generator.generate_realm()
 
 # Print some information about the generated realm

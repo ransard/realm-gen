@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import os
 
 output_folder = "output"
 
@@ -6,6 +7,10 @@ output_folder = "output"
 class ImageHandler:
     def __init__(self, biome_colors):
         self.biome_colors = biome_colors
+
+        # check if output_folder exists otherwise create it
+        if not os.path.exists(output_folder):
+            os.makedirs(output_folder)
 
     def save_image(self, data, filename, cmap="viridis", custom_cmap=None):
         plt.figure(figsize=(10, 10))

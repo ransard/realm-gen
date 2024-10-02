@@ -1,17 +1,16 @@
 import random
-import noise
 import numpy as np
 from collections import deque
 from sklearn.cluster import KMeans
 import ollama
 from realm_area import RealmArea
-from scipy.ndimage import gaussian_filter
 from sklearn.cluster import DBSCAN
 from collections import Counter
 
 from sklearn.preprocessing import StandardScaler
 from scipy.spatial import cKDTree
 from image_handler import ImageHandler
+from heightmap_gen import HeightmapGenerator
 
 
 class RealmGenerator:
@@ -40,6 +39,7 @@ class RealmGenerator:
         }
 
         self.image_handler = ImageHandler(self.biome_colors)
+        self.heightmap_gen = HeightmapGenerator(width, height, self.image_handler)
 
     def generate_areas(self, biome_map, num_areas=5):
         # Flatten the 2D biome map into a list of (x, y, biome) tuples
@@ -166,73 +166,6 @@ class RealmGenerator:
         except Exception as e:
             print(f"Error generating area info: {str(e)}")
             return "Unnamed Area", "A mysterious area awaits exploration."
-
-    def generate_heightmap(
-        self, scale=100.0, octaves=6, persistence=0.5, lacunarity=2.0
-    ):
-        heightmap = np.zeros((self.width, self.height))
-        for i in range(self.width):
-            for j in range(self.height):
-                heightmap[i][j] = noise.pnoise2(
-                    i / scale,
-                    j / scale,
-                    octaves=octaves,
-                    persistence=persistence,
-                    lacunarity=lacunarity,
-                    repeatx=self.width,
-                    repeaty=self.height,
-                    base=random.randint(0, 1000),
-                )
-
-        self.image_handler.save_image(heightmap, "heightmap.png", cmap="terrain")
-        return heightmap
-
-    def generate_improved_heightmap(
-        self,
-        scale=100.0,
-        octaves=6,
-        persistence=0.5,
-        lacunarity=2.0,
-        seed=None,
-    ):
-        if seed is not None:
-            np.random.seed(seed)
-
-        width = self.width
-        height = self.height
-
-        heightmap = np.zeros((width, height))
-
-        # Generate base noise
-        for i in range(width):
-            for j in range(height):
-                heightmap[i][j] = noise.pnoise2(
-                    i / scale,
-                    j / scale,
-                    octaves=octaves,
-                    persistence=persistence,
-                    lacunarity=lacunarity,
-                    repeatx=width,
-                    repeaty=height,
-                    base=np.random.randint(0, 1000),
-                )
-
-        # Normalize the heightmap
-        heightmap = (heightmap - heightmap.min()) / (heightmap.max() - heightmap.min())
-
-        # Apply Gaussian smoothing
-        smoothed_heightmap = gaussian_filter(heightmap, sigma=2)
-
-        # Enhance contrast
-        enhanced_heightmap = np.power(smoothed_heightmap, 1.5)
-
-        # Renormalize
-        final_heightmap = (enhanced_heightmap - enhanced_heightmap.min()) / (
-            enhanced_heightmap.max() - enhanced_heightmap.min()
-        )
-
-        self.image_handler.save_image(final_heightmap, "heightmap.png", cmap="terrain")
-        return final_heightmap
 
     def apply_biomes(self, heightmap):
         biome_map = np.zeros((self.width, self.height), dtype=int)
@@ -391,7 +324,7 @@ class RealmGenerator:
 
     def generate_realm(self):
         print("Generating realm...")
-        heightmap = self.generate_improved_heightmap(seed=42)
+        heightmap = self.heightmap_gen.generate_improved_heightmap()
         print("Generated heightmap")
         biome_map = self.apply_biomes(heightmap)
         print("Applied biomes")
