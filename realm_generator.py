@@ -10,7 +10,7 @@ from collections import Counter
 from sklearn.preprocessing import StandardScaler
 from scipy.spatial import cKDTree
 from image_handler import ImageHandler
-from heightmap_gen import HeightmapGenerator
+from heightmap_gen import generate_landscape_heightmap
 
 
 class RealmGenerator:
@@ -39,7 +39,6 @@ class RealmGenerator:
         }
 
         self.image_handler = ImageHandler(self.biome_colors)
-        self.heightmap_gen = HeightmapGenerator(width, height, self.image_handler)
 
     def generate_areas(self, biome_map, num_areas=5):
         # Flatten the 2D biome map into a list of (x, y, biome) tuples
@@ -324,7 +323,8 @@ class RealmGenerator:
 
     def generate_realm(self):
         print("Generating realm...")
-        heightmap = self.heightmap_gen.generate_improved_heightmap()
+        heightmap = generate_landscape_heightmap(self.width, self.height)
+        self.image_handler.save_image(heightmap, "heightmap.png")
         print("Generated heightmap")
         biome_map = self.apply_biomes(heightmap)
         print("Applied biomes")
