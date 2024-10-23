@@ -1,4 +1,3 @@
-import random
 import noise
 from scipy.ndimage import gaussian_filter
 import numpy as np

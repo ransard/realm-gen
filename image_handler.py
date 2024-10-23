@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import os
+from constants import climate_colors
 
 output_folder = "output"
 
@@ -28,7 +29,7 @@ class ImageHandler:
         plt.figure(figsize=(10, 10))
         plt.imshow(
             background,
-            cmap=plt.matplotlib.colors.ListedColormap(list(self.biome_colors.values())),
+            cmap=plt.matplotlib.colors.ListedColormap(list(climate_colors.values())),
         )
         x, y = zip(*points)
         plt.scatter(y, x, c="red", s=20)
@@ -42,7 +43,7 @@ class ImageHandler:
         plt.figure(figsize=(10, 10))
         plt.imshow(
             background,
-            cmap=plt.matplotlib.colors.ListedColormap(list(self.biome_colors.values())),
+            cmap=plt.matplotlib.colors.ListedColormap(list(climate_colors.values())),
         )
         for (x1, y1, x2, y2), area_info in areas.items():
             rect = plt.Rectangle(

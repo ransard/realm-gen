@@ -6,7 +6,7 @@ from collections import Counter
 from scipy.spatial import cKDTree
 import ollama
 
-from constants import biome_names, model_name
+from constants import climate_names, model_name
 
 
 def refine_clusters(X, labels, radius):
@@ -72,7 +72,7 @@ def generate_areas(width, height, biome_map, num_areas=5):
 
         # Generate area name and description using Ollama
         area_name, area_description, area_characteristics = generate_area_info(
-            biome_names[most_common_biome]
+            climate_names[most_common_biome]
         )
 
         print(f"Generated area: {area_name}")

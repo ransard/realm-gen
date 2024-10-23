@@ -6,8 +6,9 @@ from collections import Counter
 
 from image_handler import ImageHandler
 from heightmap_gen import generate_landscape_heightmap
+from climate_gen import apply_biomes
 from area_gen import generate_areas
-from constants import biome_colors, biomes
+from constants import climate_colors
 
 
 class RealmGenerator:
@@ -15,32 +16,7 @@ class RealmGenerator:
         self.width = width
         self.height = height
 
-        self.image_handler = ImageHandler(biome_colors)
-
-    def apply_biomes(self, heightmap):
-        biome_map = np.zeros((self.width, self.height), dtype=int)
-        for i in range(self.width):
-            for j in range(self.height):
-                height = heightmap[i][j]
-                if height < -0.2:
-                    biome_map[i][j] = biomes["DEEP_WATER"]
-                elif height < 0:
-                    biome_map[i][j] = biomes["SHALLOW_WATER"]
-                elif height < 0.1:
-                    biome_map[i][j] = biomes["BEACH"]
-                elif height < 0.3:
-                    biome_map[i][j] = biomes["PLAINS"]
-                elif height < 0.5:
-                    biome_map[i][j] = biomes["FOREST"]
-                elif height < 0.7:
-                    biome_map[i][j] = biomes["HILLS"]
-                else:
-                    biome_map[i][j] = biomes["MOUNTAINS"]
-
-        self.image_handler.save_image(
-            biome_map, "biome_map.png", custom_cmap=biome_colors
-        )
-        return biome_map
+        self.image_handler = ImageHandler(climate_colors)
 
     def generate_rivers(self, heightmap, num_rivers=5, max_length=00, min_length=10):
         rivers = np.zeros((self.width, self.height), dtype=bool)
@@ -119,13 +95,13 @@ class RealmGenerator:
                 x, y = random.randint(0, self.width - 1), random.randint(
                     0, self.height - 1
                 )
-                if biome_map[x][y] in [
-                    biomes["PLAINS"],
-                    biomes["FOREST"],
-                ] and self.is_near_water(x, y, rivers):
-                    villages.append((x, y))
-                    break
-                attempts += 1
+                # if biome_map[x][y] in [
+                #     biomes["PLAINS"],
+                #     biomes["FOREST"],
+                # ] and self.is_near_water(x, y, rivers):
+                villages.append((x, y))
+                break
+                # attempts += 1
 
         if len(villages) > 0:
             self.image_handler.save_image_with_points(
@@ -148,20 +124,21 @@ class RealmGenerator:
             poi_type = random.choice(poi_types)
             x, y = random.randint(0, self.width - 1), random.randint(0, self.height - 1)
             if poi_type == "DUNGEON" and biome_map[x][y] in [
-                biomes["HILLS"],
-                biomes["MOUNTAINS"],
+                "Alpine",
+                "Tundra",
+                "Polar",
             ]:
                 poi.append((x, y, poi_type))
             elif poi_type == "RUINS" and biome_map[x][y] in [
-                biomes["PLAINS"],
-                biomes["FOREST"],
+                "Tropical Rainforest",
+                "Mediterranean",
+                "Temperate Forest",
+                "Continental",
             ]:
                 poi.append((x, y, poi_type))
             elif poi_type == "MAGICAL_SITE":  # Can be anywhere
                 poi.append((x, y, poi_type))
-            elif (
-                poi_type == "NATURAL_WONDER" and biome_map[x][y] != biomes["DEEP_WATER"]
-            ):
+            elif poi_type == "NATURAL_WONDER" and biome_map[x][y] != "Deep Water":
                 poi.append((x, y, poi_type))
 
         self.image_handler.save_image_with_points(
@@ -176,8 +153,12 @@ class RealmGenerator:
         print("Generating realm...")
         heightmap = generate_landscape_heightmap(self.width, self.height)
         self.image_handler.save_image(heightmap, "heightmap.png")
+        latitudes = np.linspace(0, 90, self.height)
         print("Generated heightmap")
-        biome_map = self.apply_biomes(heightmap)
+        biome_map = apply_biomes(heightmap, latitudes)
+        self.image_handler.save_image(
+            biome_map, "biome_map.png", custom_cmap=climate_colors
+        )
         print("Applied biomes")
         rivers = self.generate_rivers(heightmap)
         print("Generated rivers")
